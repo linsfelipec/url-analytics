@@ -2,8 +2,10 @@ package url
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -63,11 +65,13 @@ func TestValidateURL(t *testing.T) {
 }
 
 type fakeURLRepository struct {
-	createCalled bool
-	createCalls  int
-	createdCode  string
-	createdURL   string
-	createFunc   func(code, originalURL string) (*URL, error)
+	createCalled    bool
+	createCalls     int
+	createdCode     string
+	createdURL      string
+	getByCodeCalled bool
+	createFunc      func(code, originalURL string) (*URL, error)
+	getByCodeFunc   func(code string) (*URL, error)
 }
 
 func (f *fakeURLRepository) Create(
@@ -93,6 +97,12 @@ func (f *fakeURLRepository) GetByCode(
 	ctx context.Context,
 	code string,
 ) (*URL, error) {
+	f.getByCodeCalled = true
+
+	if f.getByCodeFunc != nil {
+		return f.getByCodeFunc(code)
+	}
+
 	return nil, nil
 }
 
@@ -223,5 +233,75 @@ func TestService_Create_NoDuplicateError(t *testing.T) {
 
 	if createdURL != nil {
 		t.Fatalf("expected URL not created, got %+v", createdURL)
+	}
+}
+
+func TestService_GetByCode(t *testing.T) {
+	expected := &URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	repo := &fakeURLRepository{
+		getByCodeFunc: func(code string) (*URL, error) {
+			return expected, nil
+		},
+	}
+
+	service := NewService(repo)
+
+	got, err := service.GetByCode(context.Background(), "abc123")
+
+	if err != nil {
+		t.Fatalf("GetByCode() returned an error: %v", err)
+	}
+
+	if got.Code != expected.Code {
+		t.Errorf("expected code %q, got %q", expected.Code, got.Code)
+	}
+}
+
+func TestService_GetByCode_NotFound(t *testing.T) {
+	repo := &fakeURLRepository{
+		getByCodeFunc: func(code string) (*URL, error) {
+			return nil, sql.ErrNoRows
+		},
+	}
+
+	service := NewService(repo)
+
+	_, err := service.GetByCode(context.Background(), "unknown")
+
+	if !errors.Is(err, ErrURLNotFound) {
+		t.Fatalf("expected ErrURLNotFound, got %v", err)
+	}
+
+	if !repo.getByCodeCalled {
+		t.Fatal("expected repository GetByCode() to be called")
+	}
+}
+
+func TestService_GetByCode_OtherError(t *testing.T) {
+	repo := &fakeURLRepository{
+		getByCodeFunc: func(code string) (*URL, error) {
+			return nil, sql.ErrConnDone
+		},
+	}
+
+	service := NewService(repo)
+
+	_, err := service.GetByCode(context.Background(), "unknown")
+
+	expectedError := fmt.Sprintf("getting URL by code: %v", sql.ErrConnDone)
+	if err.Error() != expectedError {
+		t.Fatalf("expected %v, got %v", expectedError, err)
+	}
+
+	if !errors.Is(err, sql.ErrConnDone) {
+		t.Fatalf("expected wrapped sql.ErrConnDone, got %v", err)
+	}
+
+	if !repo.getByCodeCalled {
+		t.Fatal("expected repository GetByCode() to be called")
 	}
 }

@@ -3,6 +3,7 @@ package url
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,6 +20,8 @@ type URLRepository interface {
 type Service struct {
 	repo URLRepository
 }
+
+var ErrURLNotFound = errors.New("URL not found")
 
 const maxCodeGenerationAttempts = 3
 
@@ -67,4 +70,16 @@ func (s *Service) Create(ctx context.Context, originalURL string) (*URL, error) 
 func isDuplicateCodeError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.ConstraintName == "urls_code_key"
+}
+
+func (s *Service) GetByCode(ctx context.Context, code string) (*URL, error) {
+	url, err := s.repo.GetByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = ErrURLNotFound
+		}
+		return nil, fmt.Errorf("getting URL by code: %w", err)
+	}
+
+	return url, nil
 }
