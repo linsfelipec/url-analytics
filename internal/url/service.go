@@ -64,9 +64,7 @@ func (s *Service) Create(ctx context.Context, originalURL string) (*URL, error) 
 	return nil, fmt.Errorf("failed to generate a unique code after %d attempts", maxCodeGenerationAttempts)
 }
 
-const uniqueViolationSQLState = "23505"
-
 func isDuplicateCodeError(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationSQLState
+	return errors.As(err, &pgErr) && pgErr.ConstraintName == "urls_code_key"
 }

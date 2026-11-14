@@ -67,7 +67,6 @@ type fakeURLRepository struct {
 	createCalls  int
 	createdCode  string
 	createdURL   string
-	createErr    error
 	createFunc   func(code, originalURL string) (*URL, error)
 }
 
@@ -153,7 +152,8 @@ func TestService_Create_RetryOnDuplicateCode(t *testing.T) {
 	repo.createFunc = func(code string, originalURL string) (*URL, error) {
 		if repo.createCalls < 2 {
 			return nil, &pgconn.PgError{
-				Code: "23505",
+				Code:           "23505",
+				ConstraintName: "urls_code_key",
 			}
 		}
 		return &URL{
@@ -183,7 +183,8 @@ func TestService_Create_ExceedMaxAttempts(t *testing.T) {
 
 	repo.createFunc = func(code string, originalURL string) (*URL, error) {
 		return nil, &pgconn.PgError{
-			Code: "23505",
+			Code:           "23505",
+			ConstraintName: "urls_code_key",
 		}
 	}
 
