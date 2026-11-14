@@ -3,7 +3,10 @@ package url
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestValidateURL(t *testing.T) {
@@ -61,14 +64,25 @@ func TestValidateURL(t *testing.T) {
 
 type fakeURLRepository struct {
 	createCalled bool
+	createCalls  int
 	createdCode  string
 	createdURL   string
+	createErr    error
+	createFunc   func(code, originalURL string) (*URL, error)
 }
 
-func (f *fakeURLRepository) Create(ctx context.Context, code, originalURL string) (*URL, error) {
+func (f *fakeURLRepository) Create(
+	ctx context.Context,
+	code, originalURL string,
+) (*URL, error) {
 	f.createCalled = true
+	f.createCalls++
 	f.createdCode = code
 	f.createdURL = originalURL
+
+	if f.createFunc != nil {
+		return f.createFunc(code, originalURL)
+	}
 
 	return &URL{
 		Code:        code,
@@ -129,5 +143,84 @@ func TestService_Create_InvalidURL(t *testing.T) {
 
 	if repo.createCalled {
 		t.Fatal("repository Create() should not be called for an invalid URL")
+	}
+}
+
+func TestService_Create_RetryOnDuplicateCode(t *testing.T) {
+	repo := &fakeURLRepository{}
+	service := NewService(repo)
+
+	repo.createFunc = func(code string, originalURL string) (*URL, error) {
+		if repo.createCalls < 2 {
+			return nil, &pgconn.PgError{
+				Code: "23505",
+			}
+		}
+		return &URL{
+			Code:        code,
+			OriginalURL: originalURL,
+		}, nil
+	}
+
+	createdURL, err := service.Create(context.Background(), "https://example.com/products")
+
+	if err != nil {
+		t.Fatalf("Create() returned an error: %v", err)
+	}
+
+	if repo.createCalls != 2 {
+		t.Errorf("expected 2 repository calls, got %d", repo.createCalls)
+	}
+
+	if createdURL == nil || createdURL.Code == "" {
+		t.Fatal("expected a created URL with a short code")
+	}
+}
+
+func TestService_Create_ExceedMaxAttempts(t *testing.T) {
+	repo := &fakeURLRepository{}
+	s := NewService(repo)
+
+	repo.createFunc = func(code string, originalURL string) (*URL, error) {
+		return nil, &pgconn.PgError{
+			Code: "23505",
+		}
+	}
+
+	createdURL, err := s.Create(context.Background(), "https://example.com/products")
+
+	if err == nil {
+		t.Fatalf("expected error after too many tries")
+	}
+
+	if repo.createCalls != maxCodeGenerationAttempts {
+		t.Fatalf("expected %d attempts, got %d", maxCodeGenerationAttempts, repo.createCalls)
+	}
+
+	if createdURL != nil {
+		t.Fatalf("expected URL not created, got %+v", createdURL)
+	}
+}
+
+func TestService_Create_NoDuplicateError(t *testing.T) {
+	repo := &fakeURLRepository{}
+	s := NewService(repo)
+
+	repo.createFunc = func(code string, originalURL string) (*URL, error) {
+		return nil, errors.New("fake error")
+	}
+
+	createdURL, err := s.Create(context.Background(), "https://example.com/products")
+
+	if err.Error() != "service creating failure: fake error" {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if repo.createCalls != 1 {
+		t.Fatalf("expected 1 attempt, got %d", repo.createCalls)
+	}
+
+	if createdURL != nil {
+		t.Fatalf("expected URL not created, got %+v", createdURL)
 	}
 }
