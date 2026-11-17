@@ -25,12 +25,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var request handler.CreateURLRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid JSON request: %w", http.StatusBadRequest)
+		http.Error(w, "invalid JSON request", http.StatusBadRequest)
+		return
 	}
 
 	createdURL, err := h.service.Create(r.Context(), request.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	response := handler.CreateURLResponse{
