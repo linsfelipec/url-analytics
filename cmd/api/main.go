@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/linsfelipec/url-analytics/internal/database"
+	std_handler "github.com/linsfelipec/url-analytics/internal/handler/std"
+	"github.com/linsfelipec/url-analytics/internal/url"
 )
 
 func main() {
@@ -25,7 +28,6 @@ func main() {
 		timeout,
 	)
 	defer cancel()
-	
 
 	db, err := database.Open(ctx, dsn)
 	if err != nil {
@@ -35,10 +37,24 @@ func main() {
 
 	log.Println("Successfully connected to PostgreSQL")
 
-	var dbVersion string
-	err = db.QueryRowContext(ctx, "SELECT version()").Scan(&dbVersion)
-	if err != nil {
-		log.Fatalf("database query failed: %v", err)
+	repo := url.NewRepository(db)
+	service := url.NewService(repo)
+
+	stdHandler := std_handler.NewHandler(service)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/urls", stdHandler.Create)
+
+	server := http.Server{
+		Addr:         ":8080",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
-	log.Printf("PostgreSQL version: %s", dbVersion)
+	log.Println("HTTP server listening on :8080")
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("HTTP server failed: %v", err)
+	}
 }
