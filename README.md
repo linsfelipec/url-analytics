@@ -266,9 +266,6 @@ The current implementation is an early development version and is not production
 
 Known issues and pending improvements:
 
-- Invalid JSON requests can cause a handler panic.
-- Requests with a missing URL can cause a handler panic.
-- Invalid URL input can cause a handler panic.
 - Structured HTTP error responses and request validation are not implemented yet.
 - URL redirection has not been implemented.
 - Visit tracking and analytics collection are not implemented.
