@@ -22,6 +22,7 @@ type Service struct {
 }
 
 var ErrURLNotFound = errors.New("URL not found")
+var ErrInvalidURL = errors.New("invalid URL")
 
 const maxCodeGenerationAttempts = 3
 
@@ -32,15 +33,15 @@ func NewService(repo URLRepository) *Service {
 func validateURL(rawURL string) error {
 	parsedURL, err := url.ParseRequestURI(rawURL)
 	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidURL, err)
 	}
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("unsupported URL scheme: %v", parsedURL.Scheme)
+		return fmt.Errorf("%w: unsupported scheme %q", ErrInvalidURL, parsedURL.Scheme)
 	}
 
 	if parsedURL.Host == "" {
-		return fmt.Errorf("URL must contain a Host name")
+		return fmt.Errorf("%w: missing host", ErrInvalidURL)
 	}
 
 	return nil

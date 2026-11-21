@@ -3,6 +3,7 @@ package std_handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/linsfelipec/url-analytics/internal/handler"
@@ -31,7 +32,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	createdURL, err := h.service.Create(r.Context(), request.URL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, url.ErrInvalidURL) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
