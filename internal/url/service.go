@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/url"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -54,9 +54,7 @@ func (s *Service) Create(ctx context.Context, originalURL string) (*URL, error) 
 	}
 
 	for range maxCodeGenerationAttempts {
-		buffer := make([]byte, 6)
-		rand.Read(buffer)
-		code := hex.EncodeToString(buffer)
+		code, _ := generateCode()
 		createdURL, err := s.repo.Create(ctx, code, originalURL)
 		if err == nil {
 			return createdURL, nil
@@ -83,4 +81,29 @@ func (s *Service) GetByCode(ctx context.Context, code string) (*URL, error) {
 	}
 
 	return url, nil
+}
+
+const (
+	codeLength     = 6
+	alphabetLength = 52
+)
+
+func generateCode() (string, error) {
+	code := make([]byte, codeLength)
+
+	for i := range code {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(alphabetLength)))
+		if err != nil {
+			return "", err
+		}
+
+		c := byte(n.Int64())
+		if c < 26 {
+			code[i] = 'A' + c
+		} else {
+			code[i] = 'a' + (c - 26)
+		}
+	}
+
+	return string(code), nil
 }

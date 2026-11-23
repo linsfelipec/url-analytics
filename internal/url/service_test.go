@@ -3,7 +3,6 @@ package url
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"testing"
@@ -131,12 +130,8 @@ func TestService_Create(t *testing.T) {
 		t.Error("expected generated short code, got empty string")
 	}
 
-	if len(created.Code) != 12 {
-		t.Errorf("expected code length 12, got %d", len(created.Code))
-	}
-
-	if _, err := hex.DecodeString(created.Code); err != nil {
-		t.Errorf("expected hexadecimal code, got %q", created.Code)
+	if len(created.Code) != 6 {
+		t.Errorf("expected code length 6, got %d", len(created.Code))
 	}
 }
 
