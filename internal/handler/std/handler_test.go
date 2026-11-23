@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,11 +15,16 @@ import (
 )
 
 type fakeURLService struct {
-	createFunc func(ctx context.Context, originalURL string) (*url.URL, error)
+	createFunc    func(ctx context.Context, originalURL string) (*url.URL, error)
+	getByCodeFunc func(ctx context.Context, code string) (*url.URL, error)
 }
 
 func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.URL, error) {
 	return f.createFunc(ctx, originalURL)
+}
+
+func (f *fakeURLService) GetByCode(ctx context.Context, code string) (*url.URL, error) {
+	return f.getByCodeFunc(ctx, code)
 }
 
 func TestHandler_Create_InvalidJSON(t *testing.T) {
@@ -182,6 +188,129 @@ func TestHandler_Create_RouteWrongMethod(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodGet,
 		"/api/urls",
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusMethodNotAllowed, recorder.Code)
+	}
+}
+
+func TestHandler_GetByCode_Success(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			if code != expectedURL.Code {
+				t.Errorf("expected code %s, got %s", expectedURL.Code, code)
+			}
+			return expectedURL, nil
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/urls/%s", expectedURL.Code),
+		nil,
+	)
+	request.SetPathValue("code", expectedURL.Code)
+	recorder := httptest.NewRecorder()
+
+	h.GetByCode(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusOK, recorder.Code)
+	}
+
+	var response handler.GetURLResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+
+	if response.Code != expectedURL.Code {
+		t.Errorf("expected code %q, got %q", expectedURL.Code, response.Code)
+	}
+
+	if response.OriginalURL != expectedURL.OriginalURL {
+		t.Errorf("expected original URL %q, got %q",
+			expectedURL.OriginalURL, response.OriginalURL)
+	}
+}
+
+func TestHandler_GetByCode_NotFound(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, url.ErrURLNotFound
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/urls/unknown",
+		nil,
+	)
+	request.SetPathValue("code", "unknown")
+
+	recorder := httptest.NewRecorder()
+	h.GetByCode(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestHandler_GetByCode_InternalError(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/urls/abc123",
+		nil,
+	)
+	request.SetPathValue("code", "abc123")
+
+	recorder := httptest.NewRecorder()
+	h.GetByCode(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusInternalServerError, recorder.Code)
+	}
+
+	if strings.Contains(recorder.Body.String(), "database connection failed") {
+		t.Fatal("internal error details should not be exposed")
+	}
+}
+
+func TestHandler_GetByCode_RouteWrongMethod(t *testing.T) {
+	service := &fakeURLService{}
+	h := NewHandler(service)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/urls/{code}", h.GetByCode)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/urls/abc123",
 		nil,
 	)
 

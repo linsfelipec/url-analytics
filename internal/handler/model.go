@@ -9,3 +9,8 @@ type CreateURLResponse struct {
 type CreateURLRequest struct {
 	URL string `json:"url"`
 }
+
+type GetURLResponse struct {
+	Code        string `json:"code"`
+	OriginalURL string `json:"original_url"`
+}

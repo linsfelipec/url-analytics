@@ -44,6 +44,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/urls", stdHandler.Create)
+	mux.HandleFunc("GET /api/urls/{code}", stdHandler.GetByCode)
 
 	server := http.Server{
 		Addr:         ":8080",
