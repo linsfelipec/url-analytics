@@ -133,6 +133,7 @@ func TestService_Create(t *testing.T) {
 	if len(created.Code) != 6 {
 		t.Errorf("expected code length 6, got %d", len(created.Code))
 	}
+
 }
 
 func TestService_Create_InvalidURL(t *testing.T) {
