@@ -80,3 +80,19 @@ func (h *Handler) GetByCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+
+	foundURL, err := h.service.GetByCode(r.Context(), code)
+	if err != nil {
+		if errors.Is(err, url.ErrURLNotFound) {
+			http.Error(w, "URL not Found", http.StatusNotFound)
+		} else {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	http.Redirect(w, r, foundURL.OriginalURL, http.StatusFound)
+}

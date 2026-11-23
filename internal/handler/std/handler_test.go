@@ -322,3 +322,133 @@ func TestHandler_GetByCode_RouteWrongMethod(t *testing.T) {
 			http.StatusMethodNotAllowed, recorder.Code)
 	}
 }
+
+func TestHandler_Redirect_Success(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			if code != expectedURL.Code {
+				t.Errorf("expected code %s, got %s", expectedURL.Code, code)
+			}
+			return expectedURL, nil
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/%s", expectedURL.Code),
+		nil,
+	)
+	request.SetPathValue("code", expectedURL.Code)
+
+	recorder := httptest.NewRecorder()
+	h.Redirect(recorder, request)
+
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusFound, recorder.Code)
+	}
+
+	location := recorder.Header().Get("Location")
+	if location != expectedURL.OriginalURL {
+		t.Errorf("expected Location %q, got %q",
+			expectedURL.OriginalURL, location)
+	}
+}
+
+func TestHandler_Redirect_NotFound(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, url.ErrURLNotFound
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/unknown",
+		nil,
+	)
+	request.SetPathValue("code", "unknown")
+
+	recorder := httptest.NewRecorder()
+	h.Redirect(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestHandler_Redirect_InternalError(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	h := NewHandler(service)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/abc123",
+		nil,
+	)
+	request.SetPathValue("code", "abc123")
+
+	recorder := httptest.NewRecorder()
+	h.Redirect(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusInternalServerError, recorder.Code)
+	}
+
+	if strings.Contains(recorder.Body.String(), "database connection failed") {
+		t.Fatal("internal error details should not be exposed")
+	}
+}
+
+func TestHandler_Redirect_Route(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return expectedURL, nil
+		},
+	}
+
+	h := NewHandler(service)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{code}", h.Redirect)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/%s", expectedURL.Code),
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusFound, recorder.Code)
+	}
+
+	if got := recorder.Header().Get("Location"); got != expectedURL.OriginalURL {
+		t.Errorf("expected Location %q, got %q",
+			expectedURL.OriginalURL, got)
+	}
+}
