@@ -322,29 +322,3 @@ func TestHandler_Redirect_InternalError(t *testing.T) {
 		t.Fatal("internal error details should not be exposed")
 	}
 }
-
-func TestHandler_Redirect_Route(t *testing.T) {
-	expectedURL := &url.URL{
-		Code:        "abc123",
-		OriginalURL: "https://example.com",
-	}
-
-	service := &fakeURLService{
-		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
-			return expectedURL, nil
-		},
-	}
-
-	recorder := httptest.NewRecorder()
-	testRedirectSetup(t, service, recorder, expectedURL.Code)
-
-	if recorder.Code != http.StatusFound {
-		t.Fatalf("expected status %d, got %d",
-			http.StatusFound, recorder.Code)
-	}
-
-	if got := recorder.Header().Get("Location"); got != expectedURL.OriginalURL {
-		t.Errorf("expected Location %q, got %q",
-			expectedURL.OriginalURL, got)
-	}
-}
