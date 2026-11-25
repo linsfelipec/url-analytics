@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,6 +27,14 @@ const (
 )
 
 func main() {
+	framework := flag.String(
+		"f",
+		"gin",
+		"HTTP framework to use: gin or std",
+	)
+
+	flag.Parse()
+
 	if err := godotenv.Load(); err != nil {
 		log.Printf("No .env file found: %v", err)
 	}
@@ -52,7 +61,12 @@ func main() {
 	repo := url.NewRepository(db)
 	service := url.NewService(repo)
 
-	h, err := NewHandler(ginHandler, service, os.Getenv("BASE_URL"))
+	handlerType, err := parseHandlerType(*framework)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	h, err := NewHandler(handlerType, service, os.Getenv("BASE_URL"))
 	if err != nil {
 		log.Fatalf("error %v", err)
 	}
@@ -122,5 +136,16 @@ func NewHandler(hType HandlerType, service *url.Service, baseUrl string) (http.H
 		return router, err
 	default:
 		return nil, fmt.Errorf("Error creating handler: framework not defined")
+	}
+}
+
+func parseHandlerType(framework string) (HandlerType, error) {
+	switch framework {
+	case "gin":
+		return ginHandler, nil
+	case "std":
+		return stdHandler, nil
+	default:
+		return 0, fmt.Errorf("unsupported framework: %s", framework)
 	}
 }
