@@ -19,11 +19,11 @@ import (
 	"github.com/linsfelipec/url-analytics/internal/url"
 )
 
-type HandlerType int
+type HandlerType string
 
 const (
-	stdHandler = iota
-	ginHandler
+	stdHandler = "std"
+	ginHandler = "gin"
 )
 
 func main() {
@@ -112,12 +112,12 @@ func main() {
 
 }
 
-func NewHandler(hType HandlerType, service *url.Service, baseUrl string) (http.Handler, error) {
+func NewHandler(hType HandlerType, service *url.Service, baseURL string) (http.Handler, error) {
 	switch hType {
 	case stdHandler:
-		stdH, err := std_handler.NewHandler(service, baseUrl)
+		stdH, err := std_handler.NewHandler(service, baseURL)
 		if err != nil {
-			return nil, fmt.Errorf("Error creating handler: %v", err)
+			return nil, fmt.Errorf("error creating handler: %w", err)
 		}
 		mux := http.NewServeMux()
 		mux.HandleFunc("POST /api/urls", stdH.Create)
@@ -125,15 +125,15 @@ func NewHandler(hType HandlerType, service *url.Service, baseUrl string) (http.H
 		mux.HandleFunc("GET /{code}", stdH.Redirect)
 		return mux, nil
 	case ginHandler:
-		ginH, err := gin_handler.NewHandler(service, baseUrl)
+		ginH, err := gin_handler.NewHandler(service, baseURL)
 		if err != nil {
-			return nil, fmt.Errorf("Error creating handler: %v", err)
+			return nil, fmt.Errorf("error creating handler: %w", err)
 		}
 		router := gin.Default()
 		router.POST("/api/urls", ginH.Create)
 		router.GET("/api/urls/:code", ginH.GetByCode)
 		router.GET("/:code", ginH.Redirect)
-		return router, err
+		return router, nil
 	default:
 		return nil, fmt.Errorf("Error creating handler: framework not defined")
 	}
@@ -146,6 +146,6 @@ func parseHandlerType(framework string) (HandlerType, error) {
 	case "std":
 		return stdHandler, nil
 	default:
-		return 0, fmt.Errorf("unsupported framework: %s", framework)
+		return "", fmt.Errorf("unsupported framework: %s", framework)
 	}
 }
