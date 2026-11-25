@@ -16,9 +16,10 @@ import (
 )
 
 type fakeURLService struct {
-	createCalled  bool
-	createFunc    func(ctx context.Context, originalURL string) (*url.URL, error)
-	getByCodeFunc func(ctx context.Context, code string) (*url.URL, error)
+	createCalled    bool
+	getByCodeCalled bool
+	createFunc      func(ctx context.Context, originalURL string) (*url.URL, error)
+	getByCodeFunc   func(ctx context.Context, code string) (*url.URL, error)
 }
 
 func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.URL, error) {
@@ -27,6 +28,7 @@ func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.U
 }
 
 func (f *fakeURLService) GetByCode(ctx context.Context, code string) (*url.URL, error) {
+	f.getByCodeCalled = true
 	return f.getByCodeFunc(ctx, code)
 }
 
@@ -186,6 +188,10 @@ func TestHandler_GetByCode_Success(t *testing.T) {
 		t.Fatalf("decoding response: %v", err)
 	}
 
+	if !service.getByCodeCalled {
+		t.Fatalf("handler function not called: GetByCode")
+	}
+
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
 	}
@@ -233,5 +239,112 @@ func TestHandler_GetByCode_InternalError(t *testing.T) {
 
 	if strings.Contains(recorder.Body.String(), "database connection failed") {
 		t.Fatal("internal error details should not be exposed")
+	}
+}
+
+func testRedirectSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/%s", code),
+		nil,
+	)
+
+	h := NewHandler(service)
+	router := gin.New()
+	router.GET("/:code", h.Redirect)
+	router.ServeHTTP(recorder, request)
+}
+
+func TestHandler_Redirect_Success(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			if code != expectedURL.Code {
+				t.Errorf("expected code %s, got %s", expectedURL.Code, code)
+			}
+			return expectedURL, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	testRedirectSetup(t, service, recorder, expectedURL.Code)
+
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusFound, recorder.Code)
+	}
+
+	location := recorder.Header().Get("Location")
+	if location != expectedURL.OriginalURL {
+		t.Errorf("expected Location %q, got %q",
+			expectedURL.OriginalURL, location)
+	}
+}
+
+func TestHandler_Redirect_NotFound(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, url.ErrURLNotFound
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	testRedirectSetup(t, service, recorder, "unknown")
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestHandler_Redirect_InternalError(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	testRedirectSetup(t, service, recorder, "abc123")
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusInternalServerError, recorder.Code)
+	}
+
+	if strings.Contains(recorder.Body.String(), "database connection failed") {
+		t.Fatal("internal error details should not be exposed")
+	}
+}
+
+func TestHandler_Redirect_Route(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return expectedURL, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	testRedirectSetup(t, service, recorder, expectedURL.Code)
+
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusFound, recorder.Code)
+	}
+
+	if got := recorder.Header().Get("Location"); got != expectedURL.OriginalURL {
+		t.Errorf("expected Location %q, got %q",
+			expectedURL.OriginalURL, got)
 	}
 }
