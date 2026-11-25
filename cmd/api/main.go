@@ -118,7 +118,7 @@ func main() {
 
 }
 
-func NewHandler(hType HandlerType, service *url.Service, baseURL string, db handler.ReadyRepository) (http.Handler, error) {
+func NewHandler(hType HandlerType, service *url.Service, baseURL string, readyRepo handler.ReadyRepository) (http.Handler, error) {
 	switch hType {
 	case stdHandler:
 		stdH, err := std_handler.NewHandler(service, baseURL)
@@ -130,7 +130,7 @@ func NewHandler(hType HandlerType, service *url.Service, baseURL string, db hand
 		mux.HandleFunc("GET /api/urls/{code}", stdH.GetByCode)
 		mux.HandleFunc("GET /{code}", stdH.Redirect)
 		mux.HandleFunc("GET /healthz", handler.Healthz)
-		mux.HandleFunc("GET /readyz", handler.Readyz(db))
+		mux.HandleFunc("GET /readyz", handler.Readyz(readyRepo))
 		return mux, nil
 	case ginHandler:
 		ginH, err := gin_handler.NewHandler(service, baseURL)
@@ -142,7 +142,7 @@ func NewHandler(hType HandlerType, service *url.Service, baseURL string, db hand
 		router.GET("/api/urls/:code", ginH.GetByCode)
 		router.GET("/:code", ginH.Redirect)
 		router.GET("/healthz", gin.WrapF(handler.Healthz))
-		router.GET("GET /readyz", gin.WrapF(handler.Readyz(db)))
+		router.GET("/readyz", gin.WrapF(handler.Readyz(readyRepo)))
 		return router, nil
 	default:
 		return nil, fmt.Errorf("Error creating handler: framework not defined")
