@@ -47,27 +47,6 @@ func testCreateSetup(t *testing.T, service *fakeURLService, recorder http.Respon
 	router.ServeHTTP(recorder, request)
 }
 
-func testGetByCodeSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) *handler.GetURLResponse {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-	request := httptest.NewRequest(
-		http.MethodGet,
-		fmt.Sprintf("/api/urls/%s", code),
-		nil,
-	)
-
-	h := NewHandler(service)
-	router := gin.New()
-	router.GET("/api/urls/:code", h.GetByCode)
-	router.ServeHTTP(recorder, request)
-
-	var response handler.GetURLResponse
-	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
-		t.Fatalf("decoding response: %v", err)
-	}
-	return &response, nil
-}
-
 func TestHandler_Create_Success(t *testing.T) {
 	expectedURL := &url.URL{
 		Code:        "abc123",
@@ -168,6 +147,22 @@ func TestHandler_Create_InternalError(t *testing.T) {
 	}
 }
 
+func testGetByCodeSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/urls/%s", code),
+		nil,
+	)
+
+	h := NewHandler(service)
+	router := gin.New()
+	router.GET("/api/urls/:code", h.GetByCode)
+	router.ServeHTTP(recorder, request)
+
+}
+
 func TestHandler_GetByCode_Success(t *testing.T) {
 	expectedURL := &url.URL{
 		Code:        "abc123",
@@ -184,9 +179,11 @@ func TestHandler_GetByCode_Success(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	response := testGetByCodeSetup(t, service, recorder, expectedURL.Code)
-	if response != nil {
-		return
+	testGetByCodeSetup(t, service, recorder, expectedURL.Code)
+
+	var response handler.GetURLResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decoding response: %v", err)
 	}
 
 	if recorder.Code != http.StatusOK {
@@ -200,5 +197,41 @@ func TestHandler_GetByCode_Success(t *testing.T) {
 	if response.OriginalURL != expectedURL.OriginalURL {
 		t.Errorf("expected original URL %q, got %q",
 			expectedURL.OriginalURL, response.OriginalURL)
+	}
+}
+
+func TestHandler_GetByCode_NotFound(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, url.ErrURLNotFound
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	testGetByCodeSetup(t, service, recorder, "unknown")
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusNotFound, recorder.Code)
+	}
+}
+
+func TestHandler_GetByCode_InternalError(t *testing.T) {
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+
+	testGetByCodeSetup(t, service, recorder, "abc123")
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d",
+			http.StatusInternalServerError, recorder.Code)
+	}
+
+	if strings.Contains(recorder.Body.String(), "database connection failed") {
+		t.Fatal("internal error details should not be exposed")
 	}
 }
