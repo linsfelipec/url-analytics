@@ -40,10 +40,32 @@ func testCreateSetup(t *testing.T, service *fakeURLService, recorder http.Respon
 	)
 	request.Header.Set("Content-Type", "application/json")
 
-	router := gin.New()
 	h := NewHandler(service)
+
+	router := gin.New()
 	router.POST("/api/urls", h.Create)
 	router.ServeHTTP(recorder, request)
+}
+
+func testGetByCodeSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) *handler.GetURLResponse {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/urls/%s", code),
+		nil,
+	)
+
+	h := NewHandler(service)
+	router := gin.New()
+	router.GET("/api/urls/:code", h.GetByCode)
+	router.ServeHTTP(recorder, request)
+
+	var response handler.GetURLResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	return &response, nil
 }
 
 func TestHandler_Create_Success(t *testing.T) {
@@ -143,5 +165,40 @@ func TestHandler_Create_InternalError(t *testing.T) {
 
 	if strings.Contains(recorder.Body.String(), "database connection failed") {
 		t.Fatal("internal error details should not be exposed")
+	}
+}
+
+func TestHandler_GetByCode_Success(t *testing.T) {
+	expectedURL := &url.URL{
+		Code:        "abc123",
+		OriginalURL: "https://example.com",
+	}
+
+	service := &fakeURLService{
+		getByCodeFunc: func(ctx context.Context, code string) (*url.URL, error) {
+			if code != expectedURL.Code {
+				t.Errorf("expected code %s, got %s", expectedURL.Code, code)
+			}
+			return expectedURL, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	response := testGetByCodeSetup(t, service, recorder, expectedURL.Code)
+	if response != nil {
+		return
+	}
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	if response.Code != expectedURL.Code {
+		t.Errorf("expected code %q, got %q", expectedURL.Code, response.Code)
+	}
+
+	if response.OriginalURL != expectedURL.OriginalURL {
+		t.Errorf("expected original URL %q, got %q",
+			expectedURL.OriginalURL, response.OriginalURL)
 	}
 }
