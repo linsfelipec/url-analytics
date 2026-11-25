@@ -20,7 +20,10 @@ type fakeURLService struct {
 	getByCodeCalled bool
 	createFunc      func(ctx context.Context, originalURL string) (*url.URL, error)
 	getByCodeFunc   func(ctx context.Context, code string) (*url.URL, error)
+	validateUrlFunc func(rawUrl string) error
 }
+
+const BASE_URL_ADDRESS = "http://localhost:8080"
 
 func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.URL, error) {
 	f.createCalled = true
@@ -30,6 +33,27 @@ func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.U
 func (f *fakeURLService) GetByCode(ctx context.Context, code string) (*url.URL, error) {
 	f.getByCodeCalled = true
 	return f.getByCodeFunc(ctx, code)
+}
+
+func (f *fakeURLService) ValidateURL(rawUrl string) error {
+	if f.validateUrlFunc == nil {
+		return nil
+	}
+	return f.validateUrlFunc(rawUrl)
+}
+
+func TestHandler_InvalidBaseAddress(t *testing.T) {
+	service := &fakeURLService{
+		validateUrlFunc: func(rawUrl string) error {
+			return url.ErrInvalidURL
+		}}
+	h, err := NewHandler(service, "http://Invalid")
+	if !errors.Is(err, url.ErrInvalidURL) {
+		t.Errorf("not validated base url")
+	}
+	if h != nil {
+		t.Errorf("should not create handler with invalid base url")
+	}
 }
 
 func testCreateSetup(t *testing.T, service *fakeURLService, recorder http.ResponseWriter, rBody string) {
@@ -42,7 +66,7 @@ func testCreateSetup(t *testing.T, service *fakeURLService, recorder http.Respon
 	)
 	request.Header.Set("Content-Type", "application/json")
 
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 
 	router := gin.New()
 	router.POST("/api/urls", h.Create)
@@ -87,7 +111,7 @@ func TestHandler_Create_Success(t *testing.T) {
 			expectedURL.OriginalURL, response.OriginalURL)
 	}
 
-	if response.ShortURL != "http://localhost:8080/abc123" {
+	if response.ShortURL != (BASE_URL_ADDRESS + "/abc123") {
 		t.Errorf("unexpected short URL: %q", response.ShortURL)
 	}
 }
@@ -158,7 +182,7 @@ func testGetByCodeSetup(t *testing.T, service *fakeURLService, recorder *httptes
 		nil,
 	)
 
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 	router := gin.New()
 	router.GET("/api/urls/:code", h.GetByCode)
 	router.ServeHTTP(recorder, request)
@@ -251,7 +275,7 @@ func testRedirectSetup(t *testing.T, service *fakeURLService, recorder *httptest
 		nil,
 	)
 
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 	router := gin.New()
 	router.GET("/:code", h.Redirect)
 	router.ServeHTTP(recorder, request)

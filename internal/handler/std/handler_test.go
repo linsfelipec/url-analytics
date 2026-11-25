@@ -10,13 +10,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/linsfelipec/url-analytics/internal/handler"
 	"github.com/linsfelipec/url-analytics/internal/url"
 )
 
 type fakeURLService struct {
-	createFunc    func(ctx context.Context, originalURL string) (*url.URL, error)
-	getByCodeFunc func(ctx context.Context, code string) (*url.URL, error)
+	createFunc      func(ctx context.Context, originalURL string) (*url.URL, error)
+	getByCodeFunc   func(ctx context.Context, code string) (*url.URL, error)
+	validateUrlFunc func(rawUrl string) error
 }
 
 func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.URL, error) {
@@ -27,18 +29,46 @@ func (f *fakeURLService) GetByCode(ctx context.Context, code string) (*url.URL, 
 	return f.getByCodeFunc(ctx, code)
 }
 
-func TestHandler_Create_InvalidJSON(t *testing.T) {
-	service := fakeURLService{}
-	h := NewHandler(&service)
+func (f *fakeURLService) ValidateURL(rawUrl string) error {
+	if f.validateUrlFunc == nil {
+		return nil
+	}
+	return f.validateUrlFunc(rawUrl)
+}
 
+const BASE_URL_ADDRESS = "http://localhost:8080"
+
+func TestHandler_InvalidBaseAddress(t *testing.T) {
+	service := &fakeURLService{
+		validateUrlFunc: func(rawUrl string) error {
+			return url.ErrInvalidURL
+		}}
+	h, err := NewHandler(service, "http://Invalid")
+	if !errors.Is(err, url.ErrInvalidURL) {
+		t.Errorf("not validated base url")
+	}
+	if h != nil {
+		t.Errorf("should not create handler with invalid base url")
+	}
+}
+
+func testCreateSetup(t *testing.T, service *fakeURLService, recorder http.ResponseWriter, rBody string) {
+	t.Helper()
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/urls",
-		strings.NewReader(`{"url":}`),
+		strings.NewReader(rBody),
 	)
-	recorder := httptest.NewRecorder()
+	request.Header.Set("Content-Type", "application/json")
 
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 	h.Create(recorder, request)
+}
+
+func TestHandler_Create_InvalidJSON(t *testing.T) {
+	service := &fakeURLService{}
+	recorder := httptest.NewRecorder()
+	testCreateSetup(t, service, recorder, `{"url":}`)
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d",
@@ -53,17 +83,8 @@ func TestHandler_Create_InvalidURL(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/urls",
-		strings.NewReader(`{"url":"ftp://example.com"}`),
-	)
 	recorder := httptest.NewRecorder()
-
-	h.Create(recorder, request)
-
+	testCreateSetup(t, service, recorder, `{"url":"ftp://example.com"}`)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d",
 			http.StatusBadRequest, recorder.Code)
@@ -77,15 +98,8 @@ func TestHandler_Create_InternalError(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/urls",
-		strings.NewReader(`{"url":"https://example.com"}`),
-	)
-
 	recorder := httptest.NewRecorder()
-	h.Create(recorder, request)
+	testCreateSetup(t, service, recorder, `{"url":"https://example.com"}`)
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status: %d, received status %d",
@@ -110,16 +124,8 @@ func TestHandler_Create_Success(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"/api/urls",
-		strings.NewReader(`{"url":"https://example.com"}`),
-	)
 	recorder := httptest.NewRecorder()
-
-	h.Create(recorder, request)
+	testCreateSetup(t, service, recorder, fmt.Sprintf(`{"url":%q}`, expectedURL.OriginalURL))
 
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("expected status %d, got %d",
@@ -157,7 +163,7 @@ func TestHandler_Create_Route(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/urls", h.Create)
@@ -180,7 +186,7 @@ func TestHandler_Create_Route(t *testing.T) {
 
 func TestHandler_Create_RouteWrongMethod(t *testing.T) {
 	service := &fakeURLService{}
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/urls", h.Create)
@@ -200,6 +206,19 @@ func TestHandler_Create_RouteWrongMethod(t *testing.T) {
 	}
 }
 
+func testGetByCodeSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/api/urls/%s", code),
+		nil,
+	)
+	request.SetPathValue("code", code)
+
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
+	h.GetByCode(recorder, request)
+
+}
 func TestHandler_GetByCode_Success(t *testing.T) {
 	expectedURL := &url.URL{
 		Code:        "abc123",
@@ -215,17 +234,8 @@ func TestHandler_GetByCode_Success(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		fmt.Sprintf("/api/urls/%s", expectedURL.Code),
-		nil,
-	)
-	request.SetPathValue("code", expectedURL.Code)
 	recorder := httptest.NewRecorder()
-
-	h.GetByCode(recorder, request)
+	testGetByCodeSetup(t, service, recorder, expectedURL.Code)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d",
@@ -254,17 +264,8 @@ func TestHandler_GetByCode_NotFound(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/api/urls/unknown",
-		nil,
-	)
-	request.SetPathValue("code", "unknown")
-
 	recorder := httptest.NewRecorder()
-	h.GetByCode(recorder, request)
+	testGetByCodeSetup(t, service, recorder, "unknown")
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d",
@@ -279,17 +280,8 @@ func TestHandler_GetByCode_InternalError(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/api/urls/abc123",
-		nil,
-	)
-	request.SetPathValue("code", "abc123")
-
 	recorder := httptest.NewRecorder()
-	h.GetByCode(recorder, request)
+	testGetByCodeSetup(t, service, recorder, "abc123")
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d",
@@ -303,7 +295,7 @@ func TestHandler_GetByCode_InternalError(t *testing.T) {
 
 func TestHandler_GetByCode_RouteWrongMethod(t *testing.T) {
 	service := &fakeURLService{}
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/urls/{code}", h.GetByCode)
@@ -323,6 +315,20 @@ func TestHandler_GetByCode_RouteWrongMethod(t *testing.T) {
 	}
 }
 
+func testRedirectSetup(t *testing.T, service *fakeURLService, recorder *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("/%s", code),
+		nil,
+	)
+	request.SetPathValue("code", code)
+
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
+	h.Redirect(recorder, request)
+}
+
 func TestHandler_Redirect_Success(t *testing.T) {
 	expectedURL := &url.URL{
 		Code:        "abc123",
@@ -338,17 +344,8 @@ func TestHandler_Redirect_Success(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		fmt.Sprintf("/%s", expectedURL.Code),
-		nil,
-	)
-	request.SetPathValue("code", expectedURL.Code)
-
 	recorder := httptest.NewRecorder()
-	h.Redirect(recorder, request)
+	testRedirectSetup(t, service, recorder, expectedURL.Code)
 
 	if recorder.Code != http.StatusFound {
 		t.Fatalf("expected status %d, got %d",
@@ -369,17 +366,8 @@ func TestHandler_Redirect_NotFound(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/unknown",
-		nil,
-	)
-	request.SetPathValue("code", "unknown")
-
 	recorder := httptest.NewRecorder()
-	h.Redirect(recorder, request)
+	testRedirectSetup(t, service, recorder, "unknown")
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("expected status %d, got %d",
@@ -394,17 +382,8 @@ func TestHandler_Redirect_InternalError(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/abc123",
-		nil,
-	)
-	request.SetPathValue("code", "abc123")
-
 	recorder := httptest.NewRecorder()
-	h.Redirect(recorder, request)
+	testRedirectSetup(t, service, recorder, "abc123")
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d",
@@ -428,7 +407,7 @@ func TestHandler_Redirect_Route(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(service)
+	h, _ := NewHandler(service, BASE_URL_ADDRESS)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{code}", h.Redirect)

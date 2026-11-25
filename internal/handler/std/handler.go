@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/linsfelipec/url-analytics/internal/handler"
 	"github.com/linsfelipec/url-analytics/internal/url"
@@ -13,14 +15,28 @@ import (
 type URLService interface {
 	Create(ctx context.Context, originalURL string) (*url.URL, error)
 	GetByCode(ctx context.Context, code string) (*url.URL, error)
+	ValidateURL(rawUrl string) error
 }
 
 type Handler struct {
-	service URLService
+	service     URLService
+	baseAddress string
 }
 
-func NewHandler(s URLService) *Handler {
-	return &Handler{service: s}
+func NewHandler(s URLService, baseAddress string) (*Handler, error) {
+	if baseAddress == "" {
+		return nil, errors.New("base address must not be empty")
+	}
+
+	err := s.ValidateURL(baseAddress)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", url.ErrInvalidURL, err)
+	}
+
+	return &Handler{
+		service:     s,
+		baseAddress: strings.TrimRight(baseAddress, "/") + "/",
+	}, nil
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +59,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	response := handler.CreateURLResponse{
 		Code:        createdURL.Code,
-		ShortURL:    "http://localhost:8080/" + createdURL.Code,
+		ShortURL:    h.baseAddress + createdURL.Code,
 		OriginalURL: createdURL.OriginalURL,
 	}
 

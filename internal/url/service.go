@@ -30,7 +30,7 @@ func NewService(repo URLRepository) *Service {
 	return &Service{repo: repo}
 }
 
-func validateURL(rawURL string) error {
+func ValidateURL(rawURL string) error {
 	parsedURL, err := url.ParseRequestURI(rawURL)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidURL, err)
@@ -49,7 +49,7 @@ func validateURL(rawURL string) error {
 
 func (s *Service) Create(ctx context.Context, originalURL string) (*URL, error) {
 
-	if err := validateURL(originalURL); err != nil {
+	if err := ValidateURL(originalURL); err != nil {
 		return nil, err
 	}
 
