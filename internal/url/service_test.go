@@ -55,7 +55,7 @@ func TestValidateURL(t *testing.T) {
 
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateURL(tt.input); (err == nil) == tt.wantErr {
+			if err := ValidateURL(tt.input); (err == nil) == tt.wantErr {
 				t.Errorf("validate URL(%q) error: %v, wantErr: %v", tt.input, err, tt.wantErr)
 			}
 

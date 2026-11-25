@@ -40,7 +40,7 @@ func main() {
 	repo := url.NewRepository(db)
 	service := url.NewService(repo)
 
-	stdHandler := std_handler.NewHandler(service)
+	stdHandler, _ := std_handler.NewHandler(service, "https://localhost:8080")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/urls", stdHandler.Create)

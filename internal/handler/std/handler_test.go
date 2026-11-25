@@ -32,7 +32,7 @@ const BASE_URL_ADDRESS = "http://localhost:8080"
 
 func TestHandler_InvalidBaseAddress(t *testing.T) {
 	service := &fakeURLService{}
-	h, err := NewHandler(service, "http://Invalid")
+	h, err := NewHandler(service, "ftp://Invalid")
 	if !errors.Is(err, url.ErrInvalidURL) {
 		t.Errorf("not validated base url")
 	}

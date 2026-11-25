@@ -15,7 +15,6 @@ import (
 type URLService interface {
 	Create(ctx context.Context, originalURL string) (*url.URL, error)
 	GetByCode(ctx context.Context, code string) (*url.URL, error)
-	ValidateURL(rawUrl string) error
 }
 
 type Handler struct {
@@ -28,7 +27,7 @@ func NewHandler(s URLService, baseAddress string) (*Handler, error) {
 		return nil, errors.New("base address must not be empty")
 	}
 
-	err := s.ValidateURL(baseAddress)
+	err := url.ValidateURL(baseAddress)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", url.ErrInvalidURL, err)
 	}

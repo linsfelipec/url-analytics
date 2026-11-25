@@ -54,7 +54,10 @@ func (s *Service) Create(ctx context.Context, originalURL string) (*URL, error) 
 	}
 
 	for range maxCodeGenerationAttempts {
-		code, _ := generateCode()
+		code, err := generateCode()
+		if err != nil {
+			return nil, fmt.Errorf("generating URL code: %w", err)
+		}
 		createdURL, err := s.repo.Create(ctx, code, originalURL)
 		if err == nil {
 			return createdURL, nil
