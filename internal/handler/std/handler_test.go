@@ -16,9 +16,8 @@ import (
 )
 
 type fakeURLService struct {
-	createFunc      func(ctx context.Context, originalURL string) (*url.URL, error)
-	getByCodeFunc   func(ctx context.Context, code string) (*url.URL, error)
-	validateUrlFunc func(rawUrl string) error
+	createFunc    func(ctx context.Context, originalURL string) (*url.URL, error)
+	getByCodeFunc func(ctx context.Context, code string) (*url.URL, error)
 }
 
 func (f *fakeURLService) Create(ctx context.Context, originalURL string) (*url.URL, error) {
@@ -29,20 +28,10 @@ func (f *fakeURLService) GetByCode(ctx context.Context, code string) (*url.URL, 
 	return f.getByCodeFunc(ctx, code)
 }
 
-func (f *fakeURLService) ValidateURL(rawUrl string) error {
-	if f.validateUrlFunc == nil {
-		return nil
-	}
-	return f.validateUrlFunc(rawUrl)
-}
-
 const BASE_URL_ADDRESS = "http://localhost:8080"
 
 func TestHandler_InvalidBaseAddress(t *testing.T) {
-	service := &fakeURLService{
-		validateUrlFunc: func(rawUrl string) error {
-			return url.ErrInvalidURL
-		}}
+	service := &fakeURLService{}
 	h, err := NewHandler(service, "http://Invalid")
 	if !errors.Is(err, url.ErrInvalidURL) {
 		t.Errorf("not validated base url")
