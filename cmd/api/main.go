@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/linsfelipec/url-analytics/internal/database"
+	"github.com/linsfelipec/url-analytics/internal/handler"
 	gin_handler "github.com/linsfelipec/url-analytics/internal/handler/gin"
 	std_handler "github.com/linsfelipec/url-analytics/internal/handler/std"
 	"github.com/linsfelipec/url-analytics/internal/url"
@@ -66,7 +67,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	h, err := NewHandler(handlerType, service, os.Getenv("BASE_URL"))
+	h, err := NewHandler(
+		handlerType,
+		service,
+		os.Getenv("BASE_URL"),
+		db,
+	)
 	if err != nil {
 		log.Fatalf("error %v", err)
 	}
@@ -112,7 +118,7 @@ func main() {
 
 }
 
-func NewHandler(hType HandlerType, service *url.Service, baseURL string) (http.Handler, error) {
+func NewHandler(hType HandlerType, service *url.Service, baseURL string, db handler.ReadyRepository) (http.Handler, error) {
 	switch hType {
 	case stdHandler:
 		stdH, err := std_handler.NewHandler(service, baseURL)
@@ -123,6 +129,8 @@ func NewHandler(hType HandlerType, service *url.Service, baseURL string) (http.H
 		mux.HandleFunc("POST /api/urls", stdH.Create)
 		mux.HandleFunc("GET /api/urls/{code}", stdH.GetByCode)
 		mux.HandleFunc("GET /{code}", stdH.Redirect)
+		mux.HandleFunc("GET /healthz", handler.Healthz)
+		mux.HandleFunc("GET /readyz", handler.Readyz(db))
 		return mux, nil
 	case ginHandler:
 		ginH, err := gin_handler.NewHandler(service, baseURL)
@@ -133,6 +141,8 @@ func NewHandler(hType HandlerType, service *url.Service, baseURL string) (http.H
 		router.POST("/api/urls", ginH.Create)
 		router.GET("/api/urls/:code", ginH.GetByCode)
 		router.GET("/:code", ginH.Redirect)
+		router.GET("/healthz", gin.WrapF(handler.Healthz))
+		router.GET("GET /readyz", gin.WrapF(handler.Readyz(db)))
 		return router, nil
 	default:
 		return nil, fmt.Errorf("Error creating handler: framework not defined")
