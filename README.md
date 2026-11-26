@@ -1,68 +1,89 @@
 # URL Analytics
 
-A URL shortening and analytics platform built with Go and PostgreSQL.
+A URL shortening and analytics platform built with **Go and PostgreSQL**.
 
-This project is being developed incrementally to explore backend engineering, software architecture, database design, testing, concurrency, observability, and distributed systems.
+The project is being developed incrementally as a practical exploration of backend engineering, software architecture, database design, testing, concurrency, observability, and distributed systems.
 
-## Current Status
+The goal is to build a realistic backend service while applying engineering practices used in production systems.
 
-**Phase 1 — Core URL Shortening API**
+## Project Status
 
-- [x] Go project structure
-- [x] PostgreSQL integration
-- [x] Database migrations
-- [x] URL repository
-- [x] URL creation service
-- [x] Short code generation
-- [x] HTTP handler
-- [x] Unit and integration tests
-- [x] Race detector validation
-- [ ] Input validation and structured error handling
-- [ ] URL redirection
-- [ ] Visit tracking
-- [ ] Analytics dashboard
+<text>**Active development — Core API**</text>
+
+| Feature | Status |
+|---|---|
+| Go project structure | Implemented |
+| PostgreSQL integration | Implemented |
+| Database migrations | Implemented |
+| URL repository | Implemented |
+| URL creation service | Implemented |
+| Short code generation | Implemented |
+| HTTP API using Gin | Implemented |
+| Input validation and error handling | In progress |
+| Graceful server shutdown | Implemented |
+| URL redirection | Planned |
+| Visit tracking | Planned |
+| Analytics collection | Planned |
+| Analytics dashboard | Planned |
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
 | Go | Backend implementation |
+| Gin | HTTP routing and middleware |
 | PostgreSQL 17 | Persistent storage |
-| Docker Compose | Local database infrastructure |
 | pgx | PostgreSQL driver |
-| godotenv | Environment configuration |
+| Docker Compose | Local infrastructure |
 | golang-migrate | Database migrations |
+| godotenv | Environment configuration |
 | Go testing | Unit and integration tests |
 
 ## Architecture
 
-The application follows a layered architecture, separating HTTP handling, business logic, and data persistence.
+The application follows a layered architecture, separating HTTP concerns, business logic, and persistence.
+
+This separation keeps the domain logic independent of the HTTP framework and database implementation.
 
 ```mermaid
 flowchart TD
     Client["HTTP Client"]
+    Router["Gin Router"]
     Handler["HTTP Handler"]
     Service["URL Service"]
     Repository["URL Repository"]
     Database[("PostgreSQL")]
 
-    Client --> Handler
+    Client --> Router
+    Router --> Handler
     Handler --> Service
     Service --> Repository
     Repository --> Database
 ```
 
+### Responsibilities
+
+- **Handler:** Handles HTTP requests, validates incoming data, and formats HTTP responses.
+- **Service:** Implements URL-related business rules and coordinates operations.
+- **Repository:** Encapsulates database access.
+- **Database:** Persists URL records.
+- **Gin:** Provides HTTP routing and request handling.
+
 ### URL Creation Flow
+
+The following diagram illustrates the URL creation workflow.
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant C as Client
-    participant H as HTTP Handler
+    participant H as Gin Handler
     participant S as URL Service
     participant R as URL Repository
     participant DB as PostgreSQL
 
     C->>H: POST /api/urls
+    H->>H: Validate request
     H->>S: Create URL
     S->>S: Generate short code
     S->>R: Save URL
@@ -82,18 +103,8 @@ url-analytics/
 │       └── main.go
 ├── internal/
 │   ├── database/
-│   │   └── database.go
 │   ├── handler/
-│   │   ├── model.go
-│   │   └── std/
-│   │       ├── handler.go
-│   │       └── handles_test.go
 │   └── url/
-│       ├── model.go
-│       ├── repository.go
-│       ├── repository_test.go
-│       ├── service.go
-│       └── service_test.go
 ├── migrations/
 │   ├── 001_create_urls.up.sql
 │   └── 001_create_urls.down.sql
@@ -107,12 +118,13 @@ url-analytics/
 
 ### Package Responsibilities
 
-- `cmd/api`: Application entry point and HTTP server initialization.
+- `cmd/api`: Application entry point and HTTP server lifecycle.
 - `internal/database`: Database connection and initialization.
-- `internal/handler`: HTTP request and response abstractions.
-- `internal/handler/std`: HTTP handlers implemented using Go's standard library.
+- `internal/handler`: HTTP handlers and request/response handling.
 - `internal/url`: URL domain model, business logic, and persistence.
 - `migrations`: Database schema versioning.
+
+The `internal` directory restricts package imports to this module, helping keep implementation details encapsulated.
 
 ## Getting Started
 
@@ -120,8 +132,8 @@ url-analytics/
 
 - Go 1.26.8 or compatible version.
 - Docker and Docker Compose.
-- PostgreSQL client (`psql`), optional.
 - golang-migrate CLI.
+- PostgreSQL client (`psql`), optional.
 
 ### 1. Clone the repository
 
@@ -132,24 +144,23 @@ cd url-analytics
 
 ### 2. Configure environment variables
 
-Create your local environment file from the example:
+Create your local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-The `.env.example` file contains the required environment variable:
+Configure the database connection:
 
 ```env
-# Database configuration
-DATABASE_URL=postgres://<App>:<Password>@localhost:<Port>/url_analytics?sslmode=disable
+DATABASE_URL=postgres://urlapp:local_dev_password@localhost:5432/url_analytics?sslmode=disable
 ```
 
-Replace the placeholders with the credentials and port configured for your PostgreSQL instance.
+Adjust the credentials and port to match your local configuration.
 
-The application automatically loads `.env` using `godotenv`.
+The application loads environment variables from `.env` using `godotenv`.
 
-**Security:** Never commit `.env` or production credentials to the repository.
+**Security:** Never commit `.env` files or production credentials.
 
 ### 3. Start PostgreSQL
 
@@ -165,11 +176,11 @@ Check the container status:
 docker compose ps
 ```
 
-The PostgreSQL container uses the `postgres:17-alpine` image and exposes port `5432` by default.
+The development environment uses PostgreSQL 17 with port `5432` exposed by default.
 
 ### 4. Run database migrations
 
-Apply the database migrations using golang-migrate:
+Apply migrations:
 
 ```bash
 migrate \
@@ -178,7 +189,7 @@ migrate \
   up
 ```
 
-Check the current migration version:
+Check the migration version:
 
 ```bash
 migrate \
@@ -205,6 +216,7 @@ Creates a shortened URL and persists it in PostgreSQL.
 
 ```http
 POST /api/urls
+Content-Type: application/json
 ```
 
 **Request**
@@ -229,7 +241,7 @@ HTTP `201 Created`
 
 The generated code is a 12-character hexadecimal identifier used to reference the original URL.
 
-### Example with cURL
+**Example using cURL**
 
 ```bash
 curl -i -X POST http://localhost:8080/api/urls \
@@ -239,10 +251,18 @@ curl -i -X POST http://localhost:8080/api/urls \
 
 ## Testing
 
+The project uses Go's standard testing framework.
+
 Run all tests:
 
 ```bash
 go test ./...
+```
+
+Run tests with verbose output:
+
+```bash
+go test -v ./...
 ```
 
 Run tests with the race detector:
@@ -260,65 +280,104 @@ DATABASE_URL="postgres://urlapp:local_dev_password@localhost:5432/url_analytics?
 go test -race ./...
 ```
 
-## Known Limitations
+The race detector helps identify potential data races in concurrent execution.
 
-The current implementation is an early development version and is not production-ready.
+## Engineering Decisions
 
-Known issues and pending improvements:
+This project is also an opportunity to explore architectural trade-offs and understand why particular technologies and patterns are appropriate.
 
-- Structured HTTP error responses and request validation are not implemented yet.
-- URL redirection has not been implemented.
-- Visit tracking and analytics collection are not implemented.
-- No authentication or rate limiting is currently implemented.
+Some of the current decisions include:
 
-These limitations will be addressed incrementally as the project evolves.
+| Decision | Rationale |
+|---|---|
+| Go | Efficient execution, straightforward concurrency, and a strong backend ecosystem |
+| PostgreSQL | Relational consistency, transactions, indexing, and reliable persistence |
+| Gin | Lightweight HTTP routing and middleware support |
+| Repository pattern | Separation between business logic and persistence |
+| Database migrations | Version-controlled and repeatable schema changes |
+| Dependency separation | Easier testing and reduced coupling between layers |
+
+These decisions may evolve as the application grows.
 
 ## Development Roadmap
 
-### Phase 1 — Core URL Shortening
+The roadmap is organized around progressively introducing more advanced backend engineering concepts.
 
-- URL creation.
-- Short code generation.
-- PostgreSQL persistence.
-- HTTP API.
-- Input validation and error handling.
+### Phase 1 — Core URL Shortening API
+
+- [x] Go project structure
+- [x] PostgreSQL integration
+- [x] Database migrations
+- [x] URL repository
+- [x] URL creation service
+- [x] Short code generation
+- [x] HTTP API
+- [ ] Complete input validation and error handling
 
 ### Phase 2 — URL Redirection
 
-- Redirect endpoint.
-- HTTP redirect handling.
-- URL expiration and lifecycle considerations.
+- [ ] Redirect endpoint
+- [ ] HTTP redirect handling
+- [ ] URL expiration
+- [ ] URL lifecycle management
+- [ ] Caching considerations
 
 ### Phase 3 — Analytics
 
-- Visit tracking.
-- Event collection.
-- Analytics aggregation.
-- Grafana dashboards.
+- [ ] Visit tracking
+- [ ] Event collection
+- [ ] Analytics data model
+- [ ] Asynchronous event processing
+- [ ] Analytics aggregation
+- [ ] Grafana dashboards
 
 ### Phase 4 — Scalability and Distributed Systems
 
-- Concurrent request handling.
-- Asynchronous processing.
-- Kafka integration.
-- gRPC exploration.
-- Kubernetes deployment.
+- [ ] Concurrency and load testing
+- [ ] Background workers
+- [ ] Kafka integration
+- [ ] Event-driven architecture
+- [ ] Redis exploration
+- [ ] gRPC exploration
+- [ ] Kubernetes deployment
 
-## Engineering Goals
+### Phase 5 — Production Readiness
 
-This project is also a practical learning environment for:
+- [ ] Structured logging
+- [ ] Metrics and observability
+- [ ] Distributed tracing
+- [ ] Authentication and authorization
+- [ ] Rate limiting
+- [ ] CI/CD pipeline
+- [ ] Performance benchmarking
+- [ ] Deployment automation
 
-- Clean architecture and separation of concerns.
-- REST API design.
-- Database modeling and migrations.
-- Automated testing and race detection.
-- Go concurrency primitives.
-- Observability and monitoring.
-- Event-driven architecture.
-- Distributed systems and infrastructure.
+## Learning Objectives
+
+The project is intended to provide practical experience with:
+
+- Go application development and idiomatic Go.
+- REST API design and HTTP fundamentals.
+- Software architecture and separation of concerns.
+- Relational database design and SQL.
+- Automated testing, integration testing, and TDD.
+- Concurrency and synchronization.
+- Docker and containerized environments.
+- System design and scalability.
+- Event-driven architectures and message brokers.
+- Observability and production monitoring.
+- Cloud infrastructure and orchestration.
+
+## Contributing
+
+This is a personal learning and engineering project. Suggestions, issues, and discussions are welcome.
+
+## License
+
+No license has been specified yet.
 
 ---
 
-**Status:** Active development.
-
-**Language:** Go
+**Project status:** Active development  
+**Primary language:** Go  
+**Database:** PostgreSQL
