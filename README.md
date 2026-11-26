@@ -160,8 +160,6 @@ Adjust the credentials and port to match your local configuration.
 
 The application loads environment variables from `.env` using `godotenv`.
 
-**Security:** Never commit `.env` files or production credentials.
-
 ### 3. Start PostgreSQL
 
 Start the database using Docker Compose:
@@ -233,8 +231,8 @@ HTTP `201 Created`
 
 ```json
 {
-  "code": "6ac9af923122",
-  "short_url": "http://localhost:8080/6ac9af923122",
+  "code": "TVIpHp",
+  "short_url": "http://localhost:8080/TVIpHp",
   "original_url": "https://example.com/products"
 }
 ```
