@@ -137,7 +137,7 @@ func NewHandler(hType HandlerType,
 	case stdHandler:
 		stdH, err := std_handler.NewHandler(service, baseURL)
 		if err != nil {
-			return nil, fmt.Errorf("error creating handler: %w", err)
+			return nil, fmt.Errorf("creating handler: unsupported framework %q", hType)
 		}
 		mux := http.NewServeMux()
 		mux.HandleFunc("POST /api/urls", stdH.Create)
@@ -152,7 +152,7 @@ func NewHandler(hType HandlerType,
 	case ginHandler:
 		ginH, err := gin_handler.NewHandler(service, baseURL)
 		if err != nil {
-			return nil, fmt.Errorf("error creating handler: %w", err)
+			return nil, fmt.Errorf("creating gin handler: %w", err)
 		}
 		gin.SetMode(gin.ReleaseMode)
 		router := gin.New()

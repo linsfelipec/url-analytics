@@ -19,9 +19,12 @@ The goal is to build a realistic backend service while applying engineering prac
 | URL creation service | Implemented |
 | Short code generation | Implemented |
 | HTTP API using Gin | Implemented |
-| Input validation and error handling | In progress |
+| Standard library HTTP API | Implemented |
+| URL lookup and redirection | Implemented |
+| Health and readiness probes | Implemented |
+| Structured request logging | Implemented |
 | Graceful server shutdown | Implemented |
-| URL redirection | Planned |
+| Input validation and error handling | In progress |
 | Visit tracking | Planned |
 | Analytics collection | Planned |
 | Analytics dashboard | Planned |
@@ -37,6 +40,7 @@ The goal is to build a realistic backend service while applying engineering prac
 | Docker Compose | Local infrastructure |
 | golang-migrate | Database migrations |
 | godotenv | Environment configuration |
+| slog | Structured JSON logging |
 | Go testing | Unit and integration tests |
 
 ## Architecture
@@ -67,7 +71,8 @@ flowchart TD
 - **Service:** Implements URL-related business rules and coordinates operations.
 - **Repository:** Encapsulates database access.
 - **Database:** Persists URL records.
-- **Gin:** Provides HTTP routing and request handling.
+- **Gin/standard library:** Provides HTTP routing and request handling. Gin is the default; both implementations support the same API routes.
+- **Logger:** Emits structured JSON logs for server events and completed HTTP requests.
 
 ### URL Creation Flow
 
@@ -104,6 +109,9 @@ url-analytics/
 ├── internal/
 │   ├── database/
 │   ├── handler/
+│   │   ├── gin/
+│   │   └── std/
+│   ├── logger/
 │   └── url/
 ├── migrations/
 │   ├── 001_create_urls.up.sql
@@ -120,7 +128,10 @@ url-analytics/
 
 - `cmd/api`: Application entry point and HTTP server lifecycle.
 - `internal/database`: Database connection and initialization.
-- `internal/handler`: HTTP handlers and request/response handling.
+- `internal/handler`: Shared health, readiness, middleware, and response models.
+- `internal/handler/gin`: Gin HTTP handlers and middleware.
+- `internal/handler/std`: Standard library HTTP handlers and middleware.
+- `internal/logger`: Structured JSON logger configuration.
 - `internal/url`: URL domain model, business logic, and persistence.
 - `migrations`: Database schema versioning.
 
@@ -154,11 +165,12 @@ Configure the database connection:
 
 ```env
 DATABASE_URL=postgres://urlapp:local_dev_password@localhost:5432/url_analytics?sslmode=disable
+BASE_URL=http://localhost:8080
 ```
 
 Adjust the credentials and port to match your local configuration.
 
-The application loads environment variables from `.env` using `godotenv`.
+The application loads environment variables from `.env` using `godotenv`. `DATABASE_URL` is required; `BASE_URL` must be a valid HTTP or HTTPS address and is used in shortened URL responses.
 
 ### 3. Start PostgreSQL
 
@@ -204,6 +216,14 @@ go run ./cmd/api
 
 The API listens on port `8080` by default.
 
+Gin is used by default. You can run the equivalent standard library implementation with:
+
+```bash
+go run ./cmd/api -f std
+```
+
+Both implementations expose the same routes. The server gracefully shuts down on `SIGINT` or `SIGTERM`, allowing active requests up to 10 seconds to complete.
+
 ## API Reference
 
 ### Create a Short URL
@@ -237,7 +257,7 @@ HTTP `201 Created`
 }
 ```
 
-The generated code is a 12-character hexadecimal identifier used to reference the original URL.
+The generated code is a 6-character alphabetic identifier used to reference the original URL.
 
 **Example using cURL**
 
@@ -246,6 +266,48 @@ curl -i -X POST http://localhost:8080/api/urls \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com/products"}'
 ```
+
+### Get a Short URL
+
+Returns the original URL for a generated code.
+
+```http
+GET /api/urls/{code}
+```
+
+```bash
+curl -i http://localhost:8080/api/urls/TVIpHp
+```
+
+### Redirect a Short URL
+
+Redirects to the original URL with HTTP `302 Found`.
+
+```http
+GET /{code}
+```
+
+```bash
+curl -i http://localhost:8080/TVIpHp
+```
+
+### Health and Readiness
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | Reports that the HTTP process is healthy |
+| `GET /readyz` | Checks database connectivity with a 2-second timeout |
+
+```bash
+curl -i http://localhost:8080/healthz
+curl -i http://localhost:8080/readyz
+```
+
+The readiness endpoint returns `503 Service Unavailable` with `{"status":"unavailable"}` when the database cannot be reached.
+
+## Request Logging
+
+Both HTTP implementations log completed requests as JSON using Go's `log/slog`. A log entry includes the method, path, status code, duration in microseconds, and client address.
 
 ## Testing
 
@@ -294,6 +356,9 @@ Some of the current decisions include:
 | Repository pattern | Separation between business logic and persistence |
 | Database migrations | Version-controlled and repeatable schema changes |
 | Dependency separation | Easier testing and reduced coupling between layers |
+| Dual HTTP implementations | Gin and standard-library implementations share the service and repository layers |
+| Structured logging | JSON request and lifecycle logs provide machine-readable observability |
+| Readiness checks | Database pinging prevents traffic from being sent to an unavailable dependency |
 
 These decisions may evolve as the application grows.
 
@@ -314,8 +379,9 @@ The roadmap is organized around progressively introducing more advanced backend 
 
 ### Phase 2 — URL Redirection
 
-- [ ] Redirect endpoint
-- [ ] HTTP redirect handling
+- [x] Redirect endpoint
+- [x] HTTP redirect handling
+- [x] URL lookup endpoint
 - [ ] URL expiration
 - [ ] URL lifecycle management
 - [ ] Caching considerations
@@ -341,7 +407,9 @@ The roadmap is organized around progressively introducing more advanced backend 
 
 ### Phase 5 — Production Readiness
 
-- [ ] Structured logging
+- [x] Structured logging
+- [x] Health and readiness endpoints
+- [x] Graceful server shutdown
 - [ ] Metrics and observability
 - [ ] Distributed tracing
 - [ ] Authentication and authorization
