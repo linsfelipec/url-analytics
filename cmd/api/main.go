@@ -17,6 +17,7 @@ import (
 	"github.com/linsfelipec/url-analytics/internal/handler"
 	gin_handler "github.com/linsfelipec/url-analytics/internal/handler/gin"
 	std_handler "github.com/linsfelipec/url-analytics/internal/handler/std"
+	"github.com/linsfelipec/url-analytics/internal/logger"
 	"github.com/linsfelipec/url-analytics/internal/url"
 )
 
@@ -33,15 +34,22 @@ func main() {
 		"gin",
 		"HTTP framework to use: gin or std",
 	)
-
 	flag.Parse()
 
+	if err := run(*framework); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(framework string) error {
+	logger := logger.New(os.Stdout)
+
 	if err := godotenv.Load(); err != nil {
-		log.Printf("No .env file found: %v", err)
+		return fmt.Errorf("No .env file found, %w", err)
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		log.Fatal("DATABASE_URL env variable is required")
+		return fmt.Errorf("DATABASE_URL env variable is required")
 	}
 
 	const timeout = 5 * time.Second
@@ -53,18 +61,18 @@ func main() {
 
 	db, err := database.Open(dbCtx, dsn)
 	if err != nil {
-		log.Fatalf("Error opening database: %v", err)
+		return fmt.Errorf("error opening database: %w", err)
 	}
 	defer db.Close()
 
-	log.Println("Successfully connected to PostgreSQL")
+	logger.Info("database connected")
 
 	repo := url.NewRepository(db)
 	service := url.NewService(repo)
 
-	handlerType, err := parseHandlerType(*framework)
+	handlerType, err := parseHandlerType(framework)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	h, err := NewHandler(
@@ -74,7 +82,7 @@ func main() {
 		db,
 	)
 	if err != nil {
-		log.Fatalf("error %v", err)
+		return err
 	}
 
 	server := http.Server{
@@ -84,7 +92,7 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	log.Println("HTTP server listening on :8080")
+	logger.Info("HTTP server starting", "address", server.Addr)
 
 	serverCtx, stop := signal.NotifyContext(
 		context.Background(),
@@ -101,21 +109,21 @@ func main() {
 	select {
 	case err := <-serverError:
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server failed: %v", err)
+			return fmt.Errorf("HTTP server failed: %w", err)
 		}
-		log.Println("HTTP server stopped")
+		logger.Info("HTTP server stopped")
 
 	case <-serverCtx.Done():
-		log.Println("Shutdown signal received")
+		logger.Info("Shutdown signal received")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Graceful shutdown failed: %v", err)
 			server.Close()
+			return fmt.Errorf("Graceful shutdown failed: %w", err)
 		}
 	}
-
+	return nil
 }
 
 func NewHandler(hType HandlerType, service *url.Service, baseURL string, readyRepo handler.ReadyRepository) (http.Handler, error) {
