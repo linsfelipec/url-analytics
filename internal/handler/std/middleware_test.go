@@ -69,8 +69,8 @@ func TestMiddleware_RequestLogger(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc(path, tt.handler)
 
-			var response httptest.ResponseRecorder
-			Chain(mux, RequestLogger(testLogger)).ServeHTTP(&response, request)
+			response := httptest.NewRecorder()
+			Chain(mux, RequestLogger(testLogger)).ServeHTTP(response, request)
 
 			if response.Code != tt.status {
 				t.Fatalf("expected code %d, got %d", tt.status, response.Code)

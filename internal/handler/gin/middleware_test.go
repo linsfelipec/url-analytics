@@ -56,6 +56,7 @@ func TestMiddleware_RequestLogger(t *testing.T) {
 		ip     = "127.0.0.1:54321"
 	)
 
+	gin.SetMode(gin.TestMode)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var logBuffer bytes.Buffer
@@ -67,13 +68,12 @@ func TestMiddleware_RequestLogger(t *testing.T) {
 			}
 			request.RemoteAddr = ip
 
-			gin.SetMode(gin.TestMode)
 			router := gin.New()
 			router.Use(gin.Recovery(), RequestLogger(testLogger))
 			router.GET(path, tt.handler)
 
-			var response httptest.ResponseRecorder
-			router.ServeHTTP(&response, request)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
 
 			if response.Code != tt.status {
 				t.Fatalf("expected code %d, got %d", tt.status, response.Code)
