@@ -17,7 +17,7 @@ func LogRequest(
 		"method", method,
 		"path", path,
 		"status", status,
-		"duration", float64(duration.Microseconds())/1000,
+		"duration_us", float64(duration)/1000,
 		"client_addr", clientAddr,
 	)
 }

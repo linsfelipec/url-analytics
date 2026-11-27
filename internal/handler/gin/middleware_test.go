@@ -12,12 +12,12 @@ import (
 )
 
 type loggerMsg struct {
-	Msg      string  `json:"msg"`
-	Method   string  `json:"method"`
-	Path     string  `json:"path"`
-	Status   int     `json:"status"`
-	Duration float64 `json:"duration"`
-	ClientIP string  `json:"client_addr"`
+	Msg        string  `json:"msg"`
+	Method     string  `json:"method"`
+	Path       string  `json:"path"`
+	Status     int     `json:"status"`
+	DurationUs float64 `json:"duration_us"`
+	ClientIP   string  `json:"client_addr"`
 }
 
 func TestMiddleware_RequestLogger(t *testing.T) {
@@ -51,7 +51,7 @@ func TestMiddleware_RequestLogger(t *testing.T) {
 	}
 
 	const (
-		path   = "/cmd/api"
+		path   = "/cmd/api/abc123"
 		method = http.MethodGet
 		ip     = "127.0.0.1:54321"
 	)
@@ -70,7 +70,7 @@ func TestMiddleware_RequestLogger(t *testing.T) {
 
 			router := gin.New()
 			router.Use(gin.Recovery(), RequestLogger(testLogger))
-			router.GET(path, tt.handler)
+			router.GET("/cmd/api/:code", tt.handler)
 
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)

@@ -11,12 +11,12 @@ import (
 )
 
 type loggerMsg struct {
-	Msg      string  `json:"msg"`
-	Method   string  `json:"method"`
-	Path     string  `json:"path"`
-	Status   int     `json:"status"`
-	Duration float64 `json:"duration"`
-	ClientIP string  `json:"client_addr"`
+	Msg        string  `json:"msg"`
+	Method     string  `json:"method"`
+	Path       string  `json:"path"`
+	Status     int     `json:"status"`
+	DurationUS float64 `json:"duration_us"`
+	ClientIP   string  `json:"client_addr"`
 }
 
 func TestMiddleware_RequestLogger(t *testing.T) {
