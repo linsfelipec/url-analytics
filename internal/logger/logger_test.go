@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type LoggerMsg struct {
+type loggerMsg struct {
 	Time      string `json:"time"`
 	Level     string `json:"level"`
 	Msg       string `json:"msg"`
@@ -24,7 +24,7 @@ func TestLogger(t *testing.T) {
 	framework := "gin"
 	logger.Info(msg, "port", port, "framework", framework)
 
-	var msgLogged LoggerMsg
+	var msgLogged loggerMsg
 	if err := json.NewDecoder(&recorder).Decode(&msgLogged); err != nil {
 		t.Fatalf("error decoding message: %v", err)
 	}

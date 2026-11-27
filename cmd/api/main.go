@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -80,6 +81,7 @@ func run(framework string) error {
 		service,
 		os.Getenv("BASE_URL"),
 		db,
+		logger,
 	)
 	if err != nil {
 		return err
@@ -126,7 +128,11 @@ func run(framework string) error {
 	return nil
 }
 
-func NewHandler(hType HandlerType, service *url.Service, baseURL string, readyRepo handler.ReadyRepository) (http.Handler, error) {
+func NewHandler(hType HandlerType,
+	service *url.Service,
+	baseURL string,
+	readyRepo handler.ReadyRepository,
+	logger *slog.Logger) (http.Handler, error) {
 	switch hType {
 	case stdHandler:
 		stdH, err := std_handler.NewHandler(service, baseURL)
@@ -139,13 +145,18 @@ func NewHandler(hType HandlerType, service *url.Service, baseURL string, readyRe
 		mux.HandleFunc("GET /{code}", stdH.Redirect)
 		mux.HandleFunc("GET /healthz", handler.Healthz)
 		mux.HandleFunc("GET /readyz", handler.Readyz(readyRepo))
-		return mux, nil
+		return std_handler.Chain(
+			mux,
+			std_handler.RequestLogger(logger),
+		), nil
 	case ginHandler:
 		ginH, err := gin_handler.NewHandler(service, baseURL)
 		if err != nil {
 			return nil, fmt.Errorf("error creating handler: %w", err)
 		}
-		router := gin.Default()
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.New()
+		router.Use(gin.Recovery(), gin_handler.RequestLogger(logger))
 		router.POST("/api/urls", ginH.Create)
 		router.GET("/api/urls/:code", ginH.GetByCode)
 		router.GET("/:code", ginH.Redirect)
